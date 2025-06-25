@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文本输入</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        textarea { width: 80%; min-height: 150px; margin-bottom: 20px; padding: 10px; font-size: 16px; border-radius: 8px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>文本输入</h1>
+    <textarea id="textInput" placeholder="在此输入文本..."></textarea>
+    <button id="uploadButton">上传</button>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const textInput = document.getElementById('textInput');
+        const uploadButton = document.getElementById('uploadButton');
+
+        uploadButton.addEventListener('click', () => {
+            const text = textInput.value;
+            if (text) {
+                socket.emit('new_text', text);
+            }
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>同步展示</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        #qrcode { margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; }
+        #displayText {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            width: 80%;
+            min-height: 100px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <p>请使用手机扫描下方二维码打开输入端</p>
+    <div id="qrcode"></div>
+    <h2>同步的文本内容：</h2>
+    <div id="displayText">等待客户端输入...</div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
+    <script>
+        // 1. 生成二维码
+        const clientUrl = window.location.origin + '/client.html';
+        const qr = qrcode(0, 'L');
+        qr.addData(clientUrl);
+        qr.make();
+        document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
+
+        // 2. 连接 WebSocket 并监听事件
+        const socket = io();
+        const displayText = document.getElementById('displayText');
+
+        socket.on('text_updated', (text) => {
+            displayText.textContent = text;
+        });
+    </script>
+</body>
+</html> 
