@@ -12,19 +12,47 @@
 </head>
 <body>
     <textarea id="textInput" placeholder="在此输入文本..."></textarea>
+    <input type="file" id="imageInput" accept="image/*" style="margin-bottom: 10px;" />
+    <img id="preview" style="max-width: 80%; max-height: 200px; display: none; margin-bottom: 10px; border-radius: 8px;" />
     <button id="uploadButton">上传</button>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         const textInput = document.getElementById('textInput');
+        const imageInput = document.getElementById('imageInput');
         const uploadButton = document.getElementById('uploadButton');
+        const preview = document.getElementById('preview');
+        let imageBase64 = null;
+
+        // 图片预览
+        imageInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageBase64 = e.target.result;
+                    preview.src = imageBase64;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imageBase64 = null;
+                preview.src = '';
+                preview.style.display = 'none';
+            }
+        });
 
         uploadButton.addEventListener('click', () => {
             const text = textInput.value;
-            if (text) {
-                socket.emit('new_text', text);
+            if (!text && !imageBase64) {
+                alert('请输入文本或选择图片');
+                return;
             }
+            socket.emit('new_content', {
+                text: text,
+                image: imageBase64
+            });
         });
     </script>
 </body>

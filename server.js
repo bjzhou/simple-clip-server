@@ -20,11 +20,12 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log('a user connected');
 
-  // 监听 C 端发送过来的新文本
-  socket.on('new_text', (text) => {
-    console.log('received text: ' + text);
-    // 将收到的文本广播给所有客户端（主要是 S 端）
-    io.emit('text_updated', text);
+  // 监听 C 端发送过来的新内容（文本和图片）
+  socket.on('new_content', (data) => {
+    // data: { text: string, image: base64 string|null }
+    console.log('received content:', data);
+    // 广播给所有客户端（主要是 S 端）
+    io.emit('content_updated', data);
   });
 
   socket.on('disconnect', () => {
