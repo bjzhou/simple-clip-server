@@ -20,9 +20,9 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log('a user connected');
 
-  // 监听 C 端发送过来的新内容（文本和图片）
+  // 监听 C 端发送过来的新内容（文本和文件）
   socket.on('new_content', (data) => {
-    // data: { text: string, image: base64 string|null }
+    // data: { text: string, file: { name, type, data } | null }
     console.log('received content:', data);
     // 广播给所有客户端（主要是 S 端）
     io.emit('content_updated', data);
