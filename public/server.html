@@ -18,6 +18,18 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+        .file-name { color: #666; word-break: break-all; }
+        .download-link {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 8px 16px;
+            background: #409eff;
+            color: #fff;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+        #status { min-height: 22px; margin-top: 12px; color: #666; }
+        #status.error { color: #c62828; }
     </style>
 </head>
 <body>
@@ -27,45 +39,114 @@
     <div id="displayText">等待客户端输入...</div>
     <img id="displayImage" style="max-width: 80%; max-height: 300px; display: none; margin-top: 20px; border-radius: 8px;" />
     <div id="fileArea" style="margin-top: 20px; display: none; text-align: center;"></div>
+    <div id="status" role="status"></div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
     <script>
         // 1. 生成二维码
         const clientUrl = window.location.origin + '/client.html';
-        const qr = qrcode(0, 'L');
-        qr.addData(clientUrl);
-        qr.make();
-        document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
+        function renderClientAccess() {
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.replaceChildren();
+
+            if (typeof qrcode === 'function') {
+                const qr = qrcode(0, 'L');
+                qr.addData(clientUrl);
+                qr.make();
+                qrContainer.innerHTML = qr.createImgTag(5);
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.href = clientUrl;
+            link.textContent = clientUrl;
+            qrContainer.appendChild(link);
+        }
+        renderClientAccess();
 
         // 2. 连接 WebSocket 并监听事件
         const socket = io();
         const displayText = document.getElementById('displayText');
         const displayImage = document.getElementById('displayImage');
         const fileArea = document.getElementById('fileArea');
+        const statusDiv = document.getElementById('status');
+        let currentObjectUrl = null;
+
+        function clearFileDisplay() {
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+            }
+            displayImage.src = '';
+            displayImage.style.display = 'none';
+            fileArea.style.display = 'none';
+            fileArea.replaceChildren();
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+            return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+        }
+
+        function createFileUrl(file) {
+            if (typeof file.data === 'string') {
+                return file.data;
+            }
+            const blob = new Blob([file.data], { type: file.type || 'application/octet-stream' });
+            currentObjectUrl = URL.createObjectURL(blob);
+            return currentObjectUrl;
+        }
+
+        function appendFileName(file) {
+            const name = document.createElement('div');
+            name.className = 'file-name';
+            name.textContent = `${file.name || 'download'} (${formatBytes(file.size)})`;
+            fileArea.appendChild(name);
+        }
+
+        function appendDownloadLink(file, url) {
+            const link = document.createElement('a');
+            link.className = 'download-link';
+            link.href = url;
+            link.download = file.name || 'download';
+            link.textContent = '下载文件';
+            fileArea.appendChild(link);
+        }
 
         socket.on('content_updated', (data) => {
             displayText.textContent = data.text || '';
+            statusDiv.textContent = data.timestamp ? `接收时间：${new Date(data.timestamp).toLocaleString()}` : '';
+            statusDiv.className = '';
+
             // 文件处理
             if (data.file) {
+                clearFileDisplay();
+                const fileUrl = createFileUrl(data.file);
+                fileArea.style.display = 'block';
+                appendFileName(data.file);
+
                 if (data.file.type && data.file.type.startsWith('image/')) {
-                    displayImage.src = data.file.data;
+                    displayImage.src = fileUrl;
                     displayImage.style.display = 'block';
-                    fileArea.style.display = 'block';
-                    fileArea.innerHTML = `<div style='color:#666;'>${data.file.name}</div>`;
-                } else {
-                    displayImage.src = '';
-                    displayImage.style.display = 'none';
-                    fileArea.style.display = 'block';
-                    fileArea.innerHTML = `<div style='color:#666;'>${data.file.name}</div><a href='${data.file.data}' download='${data.file.name}' style='display:inline-block;margin-top:8px;padding:8px 16px;background:#409eff;color:#fff;border-radius:6px;text-decoration:none;'>下载文件</a>`;
                 }
+                appendDownloadLink(data.file, fileUrl);
             } else {
-                displayImage.src = '';
-                displayImage.style.display = 'none';
-                fileArea.style.display = 'none';
-                fileArea.innerHTML = '';
+                clearFileDisplay();
             }
         });
+
+        socket.on('connect_error', () => {
+            statusDiv.textContent = '连接服务器失败';
+            statusDiv.className = 'error';
+        });
+
+        socket.on('content_error', (data) => {
+            statusDiv.textContent = (data && data.error) || '接收失败';
+            statusDiv.className = 'error';
+        });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js" async onload="renderClientAccess()" onerror="renderClientAccess()"></script>
 </body>
-</html> 
+</html>

@@ -8,6 +8,10 @@
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
         textarea { width: 80%; min-height: 150px; margin-bottom: 20px; padding: 10px; font-size: 16px; border-radius: 8px; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; }
+        button:disabled { cursor: not-allowed; opacity: 0.6; }
+        #status { min-height: 22px; margin-top: 12px; color: #666; }
+        #status.error { color: #c62828; }
+        #status.success { color: #2e7d32; }
     </style>
 </head>
 <body>
@@ -16,44 +20,91 @@
     <img id="preview" style="max-width: 80%; max-height: 200px; display: none; margin-bottom: 10px; border-radius: 8px;" />
     <div id="fileName" style="margin-bottom: 10px; color: #666;"></div>
     <button id="uploadButton">上传</button>
+    <div id="status" role="status"></div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let maxFileSizeBytes = 25 * 1024 * 1024;
         const textInput = document.getElementById('textInput');
         const fileInput = document.getElementById('fileInput');
         const uploadButton = document.getElementById('uploadButton');
         const preview = document.getElementById('preview');
         const fileNameDiv = document.getElementById('fileName');
+        const statusDiv = document.getElementById('status');
         let fileObj = null;
+        let previewUrl = null;
+
+        function setStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type || '';
+        }
+
+        function clearPreview() {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+                previewUrl = null;
+            }
+            preview.src = '';
+            preview.style.display = 'none';
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+            return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+        }
+
+        fetch('/config')
+            .then((response) => response.ok ? response.json() : null)
+            .then((config) => {
+                if (config && Number.isFinite(config.maxFileSizeBytes)) {
+                    maxFileSizeBytes = config.maxFileSizeBytes;
+                }
+            })
+            .catch(() => {});
 
         // 文件预览/文件名显示
         fileInput.addEventListener('change', function() {
             const file = this.files[0];
+            fileObj = null;
+            clearPreview();
+            fileNameDiv.textContent = '';
+            setStatus('');
+
             if (file) {
+                if (file.size > maxFileSizeBytes) {
+                    this.value = '';
+                    setStatus(`文件过大，最大支持 ${formatBytes(maxFileSizeBytes)}`, 'error');
+                    return;
+                }
+
+                fileNameDiv.textContent = `${file.name} (${formatBytes(file.size)})`;
+                if (file.type.startsWith('image/')) {
+                    previewUrl = URL.createObjectURL(file);
+                    preview.src = previewUrl;
+                    preview.style.display = 'block';
+                }
+
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     fileObj = {
                         name: file.name,
                         type: file.type,
+                        size: file.size,
                         data: e.target.result
                     };
-                    if (file.type.startsWith('image/')) {
-                        preview.src = fileObj.data;
-                        preview.style.display = 'block';
-                        fileNameDiv.textContent = file.name;
-                    } else {
-                        preview.src = '';
-                        preview.style.display = 'none';
-                        fileNameDiv.textContent = file.name;
-                    }
+                    setStatus('文件已准备好');
                 };
-                reader.readAsDataURL(file);
-            } else {
-                fileObj = null;
-                preview.src = '';
-                preview.style.display = 'none';
-                fileNameDiv.textContent = '';
+                reader.onerror = function() {
+                    fileObj = null;
+                    fileInput.value = '';
+                    clearPreview();
+                    fileNameDiv.textContent = '';
+                    setStatus('读取文件失败，请重新选择', 'error');
+                };
+                reader.readAsArrayBuffer(file);
             }
         });
 
@@ -63,11 +114,36 @@
                 alert('请输入文本或选择文件');
                 return;
             }
+            if (fileInput.files[0] && !fileObj) {
+                setStatus('文件还在读取中，请稍后再上传', 'error');
+                return;
+            }
+
+            uploadButton.disabled = true;
+            setStatus('正在上传...');
+
             socket.emit('new_content', {
                 text: text,
                 file: fileObj
+            }, (response) => {
+                uploadButton.disabled = false;
+                if (response && response.ok) {
+                    setStatus('已发送', 'success');
+                    return;
+                }
+                setStatus((response && response.error) || '发送失败', 'error');
             });
+        });
+
+        socket.on('connect_error', () => {
+            uploadButton.disabled = false;
+            setStatus('连接服务器失败', 'error');
+        });
+
+        socket.on('content_error', (data) => {
+            uploadButton.disabled = false;
+            setStatus((data && data.error) || '发送失败', 'error');
         });
     </script>
 </body>
-</html> 
+</html>
